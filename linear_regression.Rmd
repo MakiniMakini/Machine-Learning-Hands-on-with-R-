@@ -1,3 +1,12 @@
+---
+title: "linear_regression"
+author: "Makini Makini"
+date: "2024-09-08"
+output: html_document
+---
+
+Libraries and data 
+```{r}
 # Helper packages
 library(dplyr)    # for data manipulation
 library(ggplot2)  # for awesome graphics
@@ -6,7 +15,7 @@ library(gridExtra)
 # Modeling packages
 library(caret)    # for cross-validation, etc.
 library(rsample)   # for resampling procedures
-library(h2o)       # for resampling and model training
+#library(h2o)       # for resampling and model training
 # Model interpretability packages
 library(vip)      # variable importance
 
@@ -21,20 +30,21 @@ split <- initial_split(ames_data, prop = 0.7,
                        strata = "Sale_Price")
 ames_train  <- training(split)
 ames_test   <- testing(split)
+```
 
-# start modeling of the data
+```{r}
 # model 1 - simple
 model1 <- lm(Sale_Price ~ Gr_Liv_Area, data = ames_train)
 
-summary(model1) 
-sigma(model1)
-confint(model1, level = 0.95)
+# summary(model1) 
+# sigma(model1)
+# confint(model1, level = 0.95)
 
 # model 2
 (model2 <- lm(Sale_Price ~ Gr_Liv_Area + Year_Built, data = ames_train))
 # or
-(model2 <- update(model1, . ~ . + Year_Built))
-summary(model2)
+# (model2 <- update(model1, . ~ . + Year_Built))
+# summary(model2)
 
 #interaction
 lm(Sale_Price ~ Gr_Liv_Area + Year_Built + Gr_Liv_Area:Year_Built, data = ames_train)
@@ -43,7 +53,10 @@ lm(Sale_Price ~ Gr_Liv_Area + Year_Built + Gr_Liv_Area:Year_Built, data = ames_t
 # include all possible main effects
 model3 <- lm(Sale_Price ~ ., data = ames_train)
 broom::tidy(model3)
+```
 
+
+```{r}
 # drawing simple graphs
 plot_1 <- model1 %>%
   broom::augment() %>% 
@@ -70,4 +83,65 @@ plot_2 <- model1 %>%
 
 plot_2
 grid.arrange(plot_1, plot_2, nrow = 1)
+```
+
+Cross validation models
+```{r}
+set.seed(123)
+
+(cv_model1 <- train(
+  form = Sale_Price ~ Gr_Liv_Area,
+  data = ames_train,
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+))
+
+# cv for model 2
+set.seed(123)
+
+(cv_model2 <- train(
+  form = Sale_Price ~ Gr_Liv_Area + Year_Built,
+  data = ames_train,
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+))
+
+# cv for model 3
+set.seed(123)
+
+(cv_model3 <- train(
+  form = Sale_Price ~ .,
+  data = ames_train,
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+))
+
+# Extract out of sample performance measures
+summary(resamples(list(
+  model1 = cv_model1,
+  model2 = cv_model2,
+  model3 = cv_model3
+)))
+```
+
+PCR
+```{r}
+set.seed(123)
+cv_model_pcr <- train(
+  Sale_Price ~ .,
+  data = ames_train,
+  method = "pcr",
+  trControl = trainControl(method = "cv", number = 10),
+  preProcess = c("zv", "center", "scale"),
+  tuneLength = 100
+)
+# model with lowest RMSE
+cv_model_pcr$bestTune
+# results for model with lowest RMSE
+cv_model_pcr$results %>%
+  dplyr::filter(ncomp == pull(cv_model_pcr$bestTune))
+
+# plot cross-validated RMSE
+ggplot(cv_model_pcr)
+```
 

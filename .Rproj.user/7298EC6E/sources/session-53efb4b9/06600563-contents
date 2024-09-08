@@ -1,6 +1,7 @@
 # Helper packages
 library(dplyr)    # for data manipulation
 library(ggplot2)  # for awesome graphics
+library(gridExtra)
 
 # Modeling packages
 library(caret)    # for cross-validation, etc.
@@ -68,4 +69,5 @@ plot_2 <- model1 %>%
   
 
 plot_2
+grid.arrange(plot_1, plot_2, nrow = 1)
 

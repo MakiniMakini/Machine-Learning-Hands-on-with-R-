@@ -1,0 +1,16 @@
+"0","vip(cv_model_pls, num_features = 20, method = ""model"")
+"
+"2","
+Attaching package: ‘pls’
+
+"
+"2","The following object is masked from ‘package:caret’:
+
+    R2
+
+"
+"2","The following object is masked from ‘package:stats’:
+
+    loadings
+
+"
