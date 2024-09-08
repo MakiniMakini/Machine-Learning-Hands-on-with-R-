@@ -145,3 +145,38 @@ cv_model_pcr$results %>%
 ggplot(cv_model_pcr)
 ```
 
+
+partial least squares
+```{r}
+# perform 10-fold cross validation on a PLS model tuning the 
+# number of principal components to use as predictors from 1-30
+set.seed(123)
+cv_model_pls <- train(
+  Sale_Price ~ ., 
+  data = ames_train, 
+  method = "pls",
+  trControl = trainControl(method = "cv", number = 10),
+  preProcess = c("zv", "center", "scale"),
+  tuneLength = 30
+)
+
+# model with lowest RMSE
+cv_model_pls$bestTune
+##    ncomp
+## 20    20
+
+# results for model with lowest RMSE
+cv_model_pls$results %>%
+  dplyr::filter(ncomp == pull(cv_model_pls$bestTune))
+##   ncomp     RMSE  Rsquared      MAE   RMSESD RsquaredSD   MAESD
+## 1    20 25459.51 0.8998194 16022.68 5243.478 0.04278512 1665.61
+
+# plot cross-validated RMSE
+ggplot(cv_model_pls)
+```
+
+
+```{r}
+vip(cv_model_pls, num_features = 20, method = "model")
+```
+
