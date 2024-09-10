@@ -1,0 +1,134 @@
+---
+title: "mars"
+author: "Makini Makini"
+date: "2024-09-09"
+output: html_document
+---
+
+```{r}
+library(earth)
+library(caret)
+library(tidyverse)
+library(MASS)
+library(ggpubr)
+```
+
+```{r}
+set.seed(2012)
+
+Boston %>% 
+  ggplot(aes(lstat, medv)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+# create a train and test data set
+train_indicies <- sample(1:nrow(Boston), size = floor(0.8 * nrow(Boston)),
+                         replace = FALSE)
+boston_train <- Boston[train_indicies,]
+boston_test <- Boston[-train_indicies,]
+```
+
+```{r}
+# model for crime rate using MARS
+mars1_boston <- earth(
+  crim ~ .,
+  data = boston_train
+)
+# model 2 with degree 
+mars2_boston <- earth(
+  crim ~ .,
+  data = boston_train,
+  degree = 2
+)
+
+print(mars1_boston)
+plot(mars1_boston, which = 1)
+
+# create a tuning grid
+hyper_grid <- expand.grid(
+  degree = 1:3,
+  nprune = seq(2, 100, length.out = 10) %>% floor()
+)
+head(hyper_grid)
+```
+
+
+```{r}
+# fit a linear regression model on the boston data
+model_1_linear <- lm(crim ~ black, data = boston_test)
+summary(model_1_linear)
+
+# multiple regression
+model_2_linear <- lm(crim ~ ., data = boston_train)
+summary(model_2_linear)
+
+# in-sample MSE (Mean Square Error)
+(In_sample_RMSE <- sigma(model_2_linear))
+
+# resudual analysis - assess the quality of the regression model by analyzing the residuals (the diff btn the observed and the predicted values)
+# they help determine the assumptions of the regression model are met and identify the problems with the model fit
+residual_diagnostics <- model_2_linear %>% 
+  broom::augment() %>% 
+  mutate(row_num = 1:n())
+head(residual_diagnostics)
+
+# visualize and see
+P1 <- ggplot(data = residual_diagnostics) +
+  geom_point(aes(y = .std.resid, x = lstat)) +
+  geom_smooth(aes(y = .std.resid ,x = lstat), method = "loess", se = FALSE) + 
+  geom_hline(yintercept = c(-2,2)) + 
+  theme_bw()
+plot_1
+
+# missspecified mean structure: rm
+P2 <- ggplot(data = residual_diagnostics) +
+  geom_point(aes(y = .std.resid, x = rm)) +
+  geom_smooth(aes(y = .std.resid, x = rm), method = "loess", se = FALSE) + 
+  geom_hline(yintercept = c(-2,2)) +
+  theme_bw()
+
+# 11 figures arranged in 1 rows and 2 columns
+annotate_figure(ggarrange(P1, P2, ncol = 2, nrow = 1),
+                top = text_grob("Misspecified Mean Structure"))
+```
+
+```{r}
+# let us now fit the mars into our boston data
+boston_mars <- earth(
+  medv ~ ., data = boston_train,
+  degree = 1
+)
+summary(boston_mars)
+
+# Rsq of the best model as per default parameters is 0.887. This indicates that there has been an improvement in comparison to the linear model.
+# 
+# Unlike the case of Linear Regression, p-values or confidence intervals are not provided in the summary of MARS for the coefficients.
+
+```
+
+```{r}
+# tuning the parameter
+# Let us tune the parameter degree, to obtain its optimal values for modelling. For doing the same, I shall use the caret package. The parameter is optimized keeping Rsquared as the metric (the higher the better) using 5-fold Cross Validation repeated thrice.
+getModelInfo("earth")$earth$parameter
+# tune a MARS model
+set.seed(103) 
+boston_mars_tune <- train(
+  x = subset(boston_train, select = -medv),
+  y = boston_train$medv,
+  method = "earth",
+  metric = "Rsquared",
+  trControl = trainControl(
+    method = "repeatedcv",
+    number = 5,
+    repeats = 3
+  ),
+  tuneGrid = expand.grid(degree = 1:5, nprune = 100)
+)
+print(boston_mars_tune)
+
+# Plot model tuning summary
+ggplot(boston_mars_tune) + theme_light()
+
+# The above plot indicates that degree 2 provides the highest Rsquared was obtained for degree equal to 2. Corresponding RMSE and MAE values are low as well.
+```
+
