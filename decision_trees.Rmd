@@ -1,0 +1,144 @@
+---
+title: "decison trees"
+author: "Makini Makini"
+date: "2024-09-16"
+output: html_document
+---
+
+```{r}
+# load libraries
+library(dplyr)
+library(ggplot2)
+
+# modeling packages
+library(rpart)
+library(caret)
+
+# model interpretability packages
+library(rpart.plot)
+library(vip)
+library(pdp)
+```
+
+
+```{r}
+# use ames data set
+library(AmesHousing)
+
+# Access the Ames dataset
+ames_data <- make_ames()
+
+# Stratified sampling with the rsample package
+set.seed(123)
+split <- initial_split(ames_data, prop = 0.7, 
+                       strata = "Sale_Price")
+ames_train  <- training(split)
+ames_test   <- testing(split)
+```
+
+```{r}
+ames_dt1 <- rpart(
+  formula = Sale_Price ~ .,
+  data = ames_train,
+  method = "anova"
+)
+ames_dt1
+
+rpart.plot(ames_dt1)
+
+ames_dt2 <- rpart(
+    formula = Sale_Price ~ .,
+    data    = ames_train,
+    method  = "anova", 
+    control = list(cp = 0, xval = 10)
+)
+
+plotcp(ames_dt2)
+abline(v = 11, lty = "dashed")
+
+# caret cross validation results
+ames_dt3 <- train(
+  Sale_Price ~ .,
+  data = ames_train,
+  method = "rpart",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 20
+)
+
+ggplot(ames_dt3)
+
+vip(ames_dt3, num_features = 40, bar = FALSE)
+```
+
+```{r}
+# Construct partial dependence plots
+p1 <- partial(ames_dt3, pred.var = "Gr_Liv_Area") %>% autoplot()
+p2 <- partial(ames_dt3, pred.var = "Year_Built") %>% autoplot()
+p3 <- partial(ames_dt3, pred.var = c("Gr_Liv_Area", "Year_Built")) %>% 
+  plotPartial(levelplot = FALSE, zlab = "yhat", drape = TRUE, 
+              colorkey = TRUE, screen = list(z = -20, x = -60))
+
+# Display plots side by side
+gridExtra::grid.arrange(p1, p2, p3, ncol = 3)
+```
+
+```{r}
+# decision tree with examples: https://www.appsilon.com/post/r-decision-treees
+
+# load some libraries
+library(caTools)
+library(rpart)
+library(rpart.plot)
+library(caret)
+library(Boruta)
+library(cvms)
+library(dplyr)
+
+head(iris)
+```
+
+```{r}
+# prepare data for training
+set.seed(42)
+sample_split <- sample.split(Y = iris$Species, SplitRatio = 0.75)
+train_set <- subset(x = iris, sample_split = TRUE)
+test_set <- subset(x = iris, sample_split = FALSE)
+```
+
+```{r}
+model <- rpart(Species ~ ., 
+               data = train_set,
+               method = "class")
+model
+rpart.plot(model)
+
+# calculate which feature is important
+importances <- varImp(model)  %>% 
+  arrange(desc(Overall))
+
+boruta_output <- Boruta(Species ~ ., data = train_set, doTrace = 0)
+rough_fix_mod <- TentativeRoughFix(boruta_output)
+boruta_signif <- getSelectedAttributes(rough_fix_mod)
+importances <- attStats(rough_fix_mod)
+importances <- importances[importances$decision != "Rejected", c("meanImp", "decision")]
+importances[order(-importances$meanImp), ]
+
+plot(boruta_output, ces.axis = 0.7, las = 2, xlab = "", main = "Feature importance")
+```
+
+```{r}
+# predict
+preds <- predict(
+  model,
+  newdata = test_set,
+  type = "class"
+)
+preds
+
+# evaluate how good are these predictions
+# use the confusion matrix
+cm <- confusionMatrix(test_set$Species, preds)
+cfm <- as_tibble(cm$table)
+plot_confusion_matrix(cfm, target_col = "Reference", prediction_col = "Prediction", counts_col = "n")
+```
+

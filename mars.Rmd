@@ -78,7 +78,7 @@ P1 <- ggplot(data = residual_diagnostics) +
   geom_smooth(aes(y = .std.resid ,x = lstat), method = "loess", se = FALSE) + 
   geom_hline(yintercept = c(-2,2)) + 
   theme_bw()
-plot_1
+P1
 
 # missspecified mean structure: rm
 P2 <- ggplot(data = residual_diagnostics) +
@@ -93,7 +93,7 @@ annotate_figure(ggarrange(P1, P2, ncol = 2, nrow = 1),
 ```
 
 ```{r}
-# let us now fit the mars into our boston data
+# let us now fit the mars method into our boston data
 boston_mars <- earth(
   medv ~ ., data = boston_train,
   degree = 1
@@ -130,5 +130,24 @@ print(boston_mars_tune)
 ggplot(boston_mars_tune) + theme_light()
 
 # The above plot indicates that degree 2 provides the highest Rsquared was obtained for degree equal to 2. Corresponding RMSE and MAE values are low as well.
+```
+
+
+```{r}
+# we now know the best parameter is 2
+# THE BEST MODEL
+set.seed(103)
+fit1 = earth(medv ~ ., data=boston_train, ncross=3, nfold=10, degree=2, pmethod="cv", keepxy=TRUE)
+summary(fit1)
+
+par(mfrow = c(1, 2))
+
+#model selection
+q1 <- plot(fit1, which=1,
+col.mean.infold.rsq="blue", col.infold.rsq="lightblue",
+col.grsq=0, col.rsq=0, col.vline=0, col.oof.vline=0)
+
+# model selection
+q2 <- plotres(fit1, which=1, info = TRUE)
 ```
 

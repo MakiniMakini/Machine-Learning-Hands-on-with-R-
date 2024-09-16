@@ -1,0 +1,205 @@
+---
+title: "k-NEAREST NEIGHBORS"
+author: "Makini Makini"
+date: "2024-09-12"
+output: html_document
+---
+
+```{r}
+# Helper packages
+library(dplyr)      # for data wrangling
+library(ggplot2)    # for awesome graphics
+library(rsample)    # for creating validation splits
+library(recipes)    # for feature engineering
+
+# Modeling packages
+library(caret)       # for fitting KNN models
+# data library
+library(AmesHousing)
+
+# Access the Ames dataset
+ames_data <- make_ames()
+
+# Stratified sampling with the rsample package
+set.seed(123)
+split <- initial_split(ames_data, prop = 0.7, 
+                       strata = "Sale_Price")
+ames_train  <- training(split)
+ames_test   <- testing(split)
+
+library(tidymodels)
+
+# Check available datasets
+data(package = "modeldata")
+
+# Load attrition dataset
+data("attrition", package = "modeldata")
+head(attrition)
+# data
+df <- attrition %>% mutate_if(is.ordered, factor, ordered = FALSE)
+
+# Create training (70%) and test (30%) sets for the 
+# rsample::attrition data.
+set.seed(123)  # for reproducibility
+churn_split <- initial_split(df, prop = .7, strata = "Attrition")
+churn_train <- training(churn_split)
+
+install.packages("dslabs")
+library(dslabs)
+
+# import MNIST training data
+mnist <- dslabs::read_mnist()
+names(mnist)
+```
+
+
+```{r}
+# The KNN algorithm identifies  
+# k
+#   observations that are “similar” or nearest to the new record being predicted and then uses the average response value (regression) or the most common class (classification) of those  
+# k
+#   observations as the predicted output.
+(two_houses <- ames_train[1:2, c("Gr_Liv_Area", "Year_Built")])
+
+# Euclidean
+dist(two_houses, method = "euclidean")
+# manhattan
+dist(two_houses, method = "manhattan")
+
+features <- c("Bedroom_AbvGr", "Year_Built")
+```
+
+```{r}
+# Create blueprint
+blueprint <- recipe(Attrition ~ ., data = churn_train) %>%
+  step_nzv(all_nominal()) %>%
+  step_integer(contains("Satisfaction")) %>%
+  step_integer(WorkLifeBalance) %>%
+  step_integer(JobInvolvement) %>%
+  step_dummy(all_nominal(), -all_outcomes(), one_hot = TRUE) %>%
+  step_center(all_numeric(), -all_outcomes()) %>%
+  step_scale(all_numeric(), -all_outcomes())
+
+# Create a resampling method
+cv <- trainControl(
+  method = "repeatedcv", 
+  number = 10, 
+  repeats = 5,
+  classProbs = TRUE,                 
+  summaryFunction = twoClassSummary
+)
+
+# Create a hyperparameter grid search
+hyper_grid <- expand.grid(
+  k = floor(seq(1, nrow(churn_train)/3, length.out = 20))
+)
+
+# Fit knn model and perform grid search
+knn_grid <- train(
+  blueprint, 
+  data = churn_train, 
+  method = "knn", 
+  trControl = cv, 
+  tuneGrid = hyper_grid,
+  metric = "ROC"
+)
+
+ggplot(knn_grid)
+```
+
+```{r}
+# MNIST data set
+set.seed(123)
+index <- sample(nrow(mnist$train$images), size = 10000)
+mnist_x <- mnist$train$images[index, ]
+mnist_y <- factor(mnist$train$labels[index])
+
+mnist_x %>%
+  as.data.frame() %>%
+  map_df(sd) %>%
+  gather(feature, sd) %>%
+  ggplot(aes(sd)) +
+  geom_histogram(binwidth = 1)
+
+# rename features
+colnames(mnist_x) <- paste0("V", 1:ncol(mnist_x))
+
+# Remove near zero variance features manually
+nzv <- nearZeroVar(mnist_x)
+index <- setdiff(1:ncol(mnist_x), nzv)
+mnist_x <- mnist_x[, index]
+
+# Use train/validate resampling method
+cv <- trainControl(
+  method = "LGOCV", 
+  p = 0.7,
+  number = 1,
+  savePredictions = TRUE
+)
+
+# Create a hyperparameter grid search
+hyper_grid <- expand.grid(k = seq(3, 25, by = 2))
+
+# Execute grid search
+knn_mnist <- train(
+  mnist_x,
+  mnist_y,
+  method = "knn",
+  tuneGrid = hyper_grid,
+  preProc = c("center", "scale"),
+  trControl = cv
+)
+
+ggplot(knn_mnist)
+```
+
+```{r}
+# Create confusion matrix
+cm <- confusionMatrix(knn_mnist$pred$pred, knn_mnist$pred$obs)
+cm$byClass[, c(1:2, 11)]  # sensitivity, specificity, & accuracy
+# Top 20 most important features
+vi <- varImp(knn_mnist)
+vi
+## ROC curve variable importance
+# Get median value for feature importance
+imp <- vi$importance %>%
+  rownames_to_column(var = "feature") %>%
+  gather(response, imp, -feature) %>%
+  group_by(feature) %>%
+  summarize(imp = median(imp))
+
+# Create tibble for all edge pixels
+edges <- tibble(
+  feature = paste0("V", nzv),
+  imp = 0
+)
+
+# Combine and plot
+imp <- rbind(imp, edges) %>%
+  mutate(ID  = as.numeric(str_extract(feature, "\\d+"))) %>%
+  arrange(ID)
+image(matrix(imp$imp, 28, 28), col = gray(seq(0, 1, 0.05)), 
+      xaxt="n", yaxt="n")
+
+```
+
+```{r}
+data("iris")
+dataset <- na.omit(iris)
+
+dataset[, -5] <- scale(dataset[, -5])
+
+# Splitting dataset into training and testing
+
+validationIndex <- createDataPartition(dataset$Species, p=0.70, list=FALSE)
+
+train <- dataset[validationIndex,] # 70% of data to training
+test <- dataset[-validationIndex,] # remaining 30% for test
+
+# Run algorithms using 10-fold cross validation
+trainControl <- trainControl(method="repeatedcv", number=10, repeats=3)
+metric <- "Accuracy"
+
+
+```
+
