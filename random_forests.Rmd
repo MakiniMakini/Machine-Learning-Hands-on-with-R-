@@ -1,0 +1,84 @@
+---
+title: "random forests"
+author: "Makini Makini"
+date: "2024-09-17"
+output: html_document
+---
+
+```{r}
+# load libraries
+library(dplyr)    # for data wrangling
+library(ggplot2)  # for awesome graphics
+
+# Modeling packages
+library(ranger)   # a c++ implementation of random forest 
+library(h2o)      # a java-based implementation of random forest
+```
+
+```{r}
+# load ames data
+# load cleaned data
+# use ames data set
+library(AmesHousing)
+
+# Access the Ames dataset
+ames_data <- make_ames()
+
+# Stratified sampling with the rsample package
+set.seed(123)
+split <- initial_split(ames_data, prop = 0.7, 
+                       strata = "Sale_Price")
+ames_train  <- training(split)
+ames_test   <- testing(split)
+```
+
+```{r}
+# get the number of features
+n_features <- length(setdiff(names(ames_train), "Sale_Price"))
+
+# train a default random forest model
+ames_rf1 <- ranger(
+  formula = Sale_Price ~ .,
+  data = ames_train,
+  mtry = floor(n_features / 3),
+  respect.unordered.factors = "order",
+  seed = 123
+)
+# get OOB RMSE
+(default_rmse <- sqrt(ames_rf1$prediction.error))
+```
+
+# RADOM FOREST exercises
+```{r}
+# load the random forest src packaged
+library("randomForestSRC")
+
+# read the Epo data
+Epo <- read.csv("http://publicifsv.sund.ku.dk/~helene/Epo.csv", stringsAsFactors=TRUE)
+
+# read new patient data
+newpatient <-  read.csv("http://publicifsv.sund.ku.dk/~helene/newpatient", stringsAsFactors=TRUE)
+
+# In this exercise, we will use the rfsrc() function from the R-package randomForestSRC to grow single trees on the Epo data. Next you will combine those trees to make forest predictions.
+
+# 1. Get the tree prediction for individual i = 25
+# set the seed
+# use rfsrc() to grow forest with one tree
+# get the oob prediction for individual i=25
+M <- 1000
+pred <- rep(0, M)
+
+for (ii in 1:M) {
+  tree1 <- rfsrc(Y~age+sex+HbBase+Treat+Resection, Epo, ntree = 1, seed = ii)
+  pred[ii] <- tree1$predicted.oob[25]
+}
+pred[1:10]
+
+# plot
+pred.mean <- sapply(1:M, function(ii) {
+mean(na.omit(pred[1:ii]))
+})
+plot(pred.mean)
+
+```
+

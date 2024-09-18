@@ -1,0 +1,105 @@
+---
+title: "bagging"
+author: "Makini Makini"
+date: "2024-09-16"
+output: html_document
+---
+
+```{r}
+# helper packages
+# Helper packages
+library(dplyr)       # for data wrangling
+library(ggplot2)     # for awesome plotting
+library(doParallel)  # for parallel backend to foreach
+library(foreach)     # for parallel processing with for loops
+
+# Modeling packages
+library(caret)       # for general model fitting
+library(rpart)       # for fitting decision trees
+library(ipred)       # for fitting bagged decision trees
+```
+
+```{r}
+# load cleaned data
+# use ames data set
+library(AmesHousing)
+
+# Access the Ames dataset
+ames_data <- make_ames()
+
+# Stratified sampling with the rsample package
+set.seed(123)
+split <- initial_split(ames_data, prop = 0.7, 
+                       strata = "Sale_Price")
+ames_train  <- training(split)
+ames_test   <- testing(split)
+```
+
+```{r}
+# 1. train the model
+set.seed(123)
+
+# TRAIN A bagged model
+ames_bag1 <- bagging(
+  formula = Sale_Price ~ .,
+  data = ames_train,
+  nbagg = 100,
+  coob = TRUE,
+  control = rpart.control(minsplit = 2, cp = 0)
+)
+ames_bag1
+```
+
+```{r}
+#parallelize
+
+# Create a parallel socket cluster
+cl <- makeCluster(8) # use 8 workers
+registerDoParallel(cl) # register the parallel backend
+
+# Fit trees in parallel and compute predictions on the test set
+predictions <- foreach(
+  icount(160), 
+  .packages = "rpart", 
+  .combine = cbind
+  ) %dopar% {
+    # bootstrap copy of training data
+    index <- sample(nrow(ames_train), replace = TRUE)
+    ames_train_boot <- ames_train[index, ]  
+  
+    # fit tree to bootstrap copy
+    bagged_tree <- rpart(
+      Sale_Price ~ ., 
+      control = rpart.control(minsplit = 2, cp = 0),
+      data = ames_train_boot
+      ) 
+    
+    predict(bagged_tree, newdata = ames_test)
+}
+
+predictions[1:5, 1:7]
+```
+
+```{r}
+predictions %>%
+  as.data.frame() %>%
+  mutate(
+    observation = 1:n(),
+    actual = ames_test$Sale_Price) %>%
+  tidyr::gather(tree, predicted, -c(observation, actual)) %>%
+  group_by(observation) %>%
+  mutate(tree = stringr::str_extract(tree, '\\d+') %>% as.numeric()) %>%
+  ungroup() %>%
+  arrange(observation, tree) %>%
+  group_by(observation) %>%
+  mutate(avg_prediction = cummean(predicted)) %>%
+  group_by(tree) %>%
+  summarize(RMSE = RMSE(avg_prediction, actual)) %>%
+  ggplot(aes(tree, RMSE)) +
+  geom_line() +
+  xlab('Number of trees')
+
+# Shutdown parallel cluster
+stopCluster(cl)
+```
+
