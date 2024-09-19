@@ -1,0 +1,61 @@
+---
+title: "GBM"
+author: "Makini Makini"
+date: "2024-09-18"
+output: html_document
+---
+
+
+```{r}
+# Thank you God for today, as I learn this may it help me grow and become better
+
+# Helper packages
+library(dplyr)    # for general data wrangling needs
+
+# Modeling packages
+install.packages("xgboost")
+library(gbm)      # for original implementation of regular and stochastic GBMs
+library(h2o)      # for a java-based implementation of GBM variants
+library(xgboost)  # for fitting extreme gradient boosting
+```
+
+```{r}
+# data library
+library(AmesHousing)
+
+# Access the Ames dataset
+ames_data <- make_ames()
+
+# Stratified sampling with the rsample package
+set.seed(123)
+split <- initial_split(ames_data, prop = 0.7, 
+                       strata = "Sale_Price")
+ames_train  <- training(split)
+ames_test   <- testing(split)
+```
+
+```{r}
+# run a basic GBM model - takes a little over 2mins to run
+set.seed(123)  # for reproducibility
+ames_gbm1 <- gbm(
+  formula = Sale_Price ~ .,
+  data = ames_train,
+  distribution = "gaussian",  # SSE loss function
+  n.trees = 5000,
+  shrinkage = 0.1,
+  interaction.depth = 3,
+  n.minobsinnode = 10,
+  cv.folds = 10
+)
+
+# find index for number trees with minimum CV error
+best <- which.min(ames_gbm1$cv.error)
+
+# get MSE and compute RMSE
+sqrt(ames_gbm1$cv.error[best])
+## [1] 23240.38
+
+# plot error curve
+gbm.perf(ames_gbm1, method = "cv")
+```
+
